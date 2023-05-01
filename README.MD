@@ -1,3 +1,5 @@
+
+
 # MNIST Digit Classification and Deep neural networks.
 [Neural Networks and Deep Learning](http://neuralnetworksanddeeplearning.com/index.html) explains core concepts of Neural Networks and Deep Learning. Together with the book there comes very detailed code implementing the ideas discussed.
 This project aims at summarizing the book chapter by chapter. After craftig this summary the goal is to build a Neural Network form scratch, implementing the ideas presented in the book, without looking at the material again.
@@ -50,5 +52,37 @@ Note that if we change the activation $z_{j}^{l}$ by $\Delta z_{j}^l$ then the c
 
 Define the error of the $j-th$ neuron in the $l-th$ layer.
 
+$$\delta_{j}^{l} = \frac{\partial C}{\partial z_{j}^{l}}$$
+
+The following four formulas allow us to connect the vector $\delta^{l}$ to the quantities of interest.
+### Assumptions:
+Firstly, we need that the cost function C and be written as an average:
+$$C = \frac{1}{n} \sum_x C_x$$
+We need this, since barckpropagation will allow us to compute $\frac{\partial C_x}{\partial w}$ and $\frac{\partial C_x}{\partial b}$.
+
+Secondly, we need that the cost function can be written as a function of the neural network in concern.
+
+
 ### Four formulas of backpropagation:
+1) For the output layer L we have:
+    $$\delta_{j}^{L} = \frac{\partial C}{\partial a_{j}^{L}} \sigma '(z_{j}^{L})$$
+    Using $*$ as the pointwise multiplication:
+    $$\delta^{L} = \nabla C_a * \sigma '(z^{L})$$
+
+2) Equation connecting the error of the $l-th$ layer to the $l+1-th$ layer:
+$$\delta^{l} = ((w^{l+1})^T\delta^{l+1}) * \sigma '(z^{l})$$
+
+3) Error and bias:
+$$\frac{\partial C}{\partial b_{j}^{l}} = \delta_{l}^{l}$$
+
+4) Error and weight:
+$$\frac{\partial C}{\partial w_{jk}^{l}} = a_{k}^{l-1}\delta_{j}^{l}$$
+
+## Chapter III:
+### Cross entropy cost function:
+We use the cross entropy function because it mitigates the learning slowdown in the last layer, since its derivative cancels out the derivative of the activation function.
+
+$$C(y,a) = \frac{-1}{n}\sum_x \sum_j [y_j ln(a_j) + (1-y_j) ln(1-a_j)]$$
+
+(Note: This function can be approximated when considering not all inputs x, but only a batch. The function is always positive (since $y_j$ and $a_j$ are assumed to be between 0 and 1)--> use only with sigmoids or htan, not ReLu)
 
