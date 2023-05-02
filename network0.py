@@ -1,4 +1,8 @@
+import importlib
 import numpy as np
+import debugger as deb
+importlib.reload(deb)
+
 seed_value = 42
 
 # TODO: assert input right shape for nn
@@ -15,19 +19,23 @@ class network:
         self.layers = layers
         np.random.seed(seed_value)
         self.weights = [np.random.rand(layers[i+1], layers[i]) for i in range(len(layers)-1)]
-        self.biases = [np.random.rand(layers[i],1) for i in range(1, len(layers))]
+        self.biases = [np.random.rand(layers[i]) for i in range(1, len(layers))]
 
-    def forward(self, z : np.array)->np.array:
+        deb.check_weights(self, self.weights)
+        deb.check_biases(self, self.biases)
+
+    def forward(self, z : np.array):
         z = [z] # need to do this with a list, since not all sublist are of the same size
         a = z[:] # create copy of z
 
-        z.append(np.dot(self.weights[0], a[0]) + self.biases[0][0])        
+        z.append(np.dot(self.weights[0], a[0]) + self.biases[0])        
         a.append(ReLU(z[-1]))
 
 
         for i in range(1,len(self.layers)-1):
-            z.append(np.dot(self.weights[i], a[-1]) + self.biases[i][0])
+            z.append(np.dot(self.weights[i], a[-1]) + self.biases[i])
             a.append(ReLU(z[-1]))
+
         return z , a # returns two lists
     
     def SGD(self, train_data: np.array, eta: float, epochs: int, batch_size: int, loss_fn, dloss_fn, report: bool = False, validation_data: np.array = None, seed_value: float = None):
@@ -46,7 +54,7 @@ class network:
                 for (X,y) in validation_data:
                     y_pred = self.forward(X)[-1]
                     loss += loss_fn(y_pred=y_pred, y_true= y)
-                    # this should be done better
+                    # get y_pred in one-hot format this should be done better
                     temp = np.zeros_like(y_pred)
                     temp[np.argmax(y_pred)] = 1
                     accuracy += np.array_equal(temp, y)
@@ -57,42 +65,54 @@ class network:
 
 
     def batch_update(self, train_data: np.array, eta: float, loss_fn, dloss_fn):
-        partial_weights = np.zeros_like(self.weights)
-        partial_biases = np.zeros_like(self.biases)
+
+        partial_weights = [np.zeros((self.layers[i+1], self.layers[i])) for i in range(len(self.layers)-1)]
+        partial_biases = [np.zeros((self.layers[i],1)) for i in range(1, len(self.layers))]
 
         for (X,y) in train_data:
             weights_update, biases_update  = self.backpropagation(X, y, dloss_fn)
-            partial_weights += weights_update
-            partial_biases += biases_update
+
+            partial_weights = [np.add(x,y) for (x,y) in zip(partial_weights, weights_update)]
+            partial_biases = [np.add(x,y) for (x,y) in zip(partial_biases, biases_update)]
         
         partial_weights = [(-eta*sublist)/len(train_data) for sublist in partial_weights] # normalize and multiply by learning rate
         partial_biases = [(-eta*sublist)/len(train_data) for sublist in partial_biases]
-
 
         self.weights = [np.add(x,y) for (x,y) in zip(self.weights, partial_weights)]
         self.biases  = [np.add(x,y) for (x,y) in zip(self.biases, partial_biases)]
 
 
-
     def backpropagation(self, X: np.array, y: np.array, dloss_fn):
+        
         z, a = self.forward(X)
-        y = np.array(y).reshape(-1,1)
 
-        
+        delta = []
+        delta.append(dloss_fn(y_true=y, y_pred=a[-1])*dReLU(z[-1]))
 
-        delta = z[1:] # so that delta is initialized with the correct size
-        delta.reverse() # error in the last layer is in the first entry of delta, etc.
-        delta[0] = dloss_fn(y_true=y, y_pred=a[-1]) * dReLU(z[-1])
-        print(f"Print delta: {delta}")
-        print(f"Print weights: {self.weights}")
-        print(f"Print activation: {a}")
+        for i in range(1, len(self.layers)-1):
+            delta.append(np.dot(np.transpose(self.weights[-i]), delta[-1])*z[-(i+1)])
 
-        for l in range(1, len(delta)):
-            delta[l] = (np.dot(np.transpose(self.weights[-l]), delta[l-1])) * dReLU(z[-(l+1)])
-            
+        # calculate partial weights
+        partial_weights = []
+
+        for ind_delta in range(len(delta)):
+            if(isinstance(delta[ind_delta], np.ndarray)): # check if array or scalar
+                for d in range(len(delta[ind_delta])):
+                    # print(f"print a in loop {a[-(ind_delta+2)]}")
+                    partial_weights.append(np.array(delta[ind_delta][d] * a[-(ind_delta+2)]))
+            else:
+                # print(f"print a in loop {a[-(ind_delta+2)]}")
+                partial_weights.append(np.array(delta[ind_delta] * a[-(ind_delta+2)]))
         delta.reverse()
+        partial_weights.reverse()
+
+        deb.check_biases(self, delta)
+        deb.check_weights(self, partial_weights)
         
-        return self.weights, delta # partial_weights is the same as delta according to backpropagation formula 3)
+
+        return partial_weights, delta # since delta = partial_biases
+
+        
 
 def ReLU(input: np.array):
         return np.maximum(0,input)
@@ -103,9 +123,17 @@ def dReLU(input: np.array):
 # when using the network with ReLU one can't easily use cross entropy loss
 def mean_square_error(y_true: np.array, y_pred: np.array):
     '''square mean error for one training input'''
+    #TODO: check that output has right format 
     return np.mean(np.square(y_pred-y_true))
      
 
 def dmean_square_error(y_true: np.array, y_pred: np.array):
-    return 2/len(y_true) * (y_pred-y_true)
+    if not np.issubdtype(y_true.dtype, float):
+        y_true = y_true[:, np.newaxis]
+        # this is risky if y_true and y_pred are not both colum vectors
+        res = 2/len(y_true) * (y_pred-y_true)
+        assert(res.shape[1]==1)
+        return res
+    else:
+        return 2*(y_pred-y_true)
 
