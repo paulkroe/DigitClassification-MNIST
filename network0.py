@@ -8,7 +8,7 @@ seed_value = 42
 # TODO: assert input right shape for nn
 
 class network:
-    def __init__(self, layers: np.array, seed_value: float = None):
+    def __init__(self, layers: np.array, weights=None, biases=None, seed_value: float = None):
         
         '''
         Implementing a fully connected neural network.
@@ -16,14 +16,24 @@ class network:
         weights[l] = weights matrix of the l+1-th layer. --> weights[l][j][i] = w_{ji}_{l+1}
         biases[l] = biases of the l+1-th layer. --> biases[l][i] = b^{l+1}_{i}
         '''
+        assert(isinstance(layers, np.ndarray))
+
         self.layers = layers
-        np.random.seed(seed_value)
-        self.weights = [np.random.rand(layers[i+1], layers[i]) for i in range(len(layers)-1)]
-        self.biases = [np.random.rand(layers[i]) for i in range(1, len(layers))]
+        
+        if not (weights is None and biases is None):
+            self.layers = layers
+            self.weights = weights
+            self.biases = biases 
 
-        deb.check_weights(self, self.weights)
-        deb.check_biases(self, self.biases)
 
+        else:
+            np.random.seed(seed_value)
+            self.weights = [np.random.rand(layers[i+1], layers[i]) for i in range(len(layers)-1)]
+            self.biases = [np.random.rand(layers[i]) for i in range(1, len(layers))]
+
+        #deb.check_weights(self, self.weights)
+        #deb.check_biases(self, self.biases)
+    
     def forward(self, z : np.array):
         z = [z] # need to do this with a list, since not all sublist are of the same size
         a = z[:] # create copy of z
@@ -45,7 +55,7 @@ class network:
         for epoch in range(epochs):
             np.random.shuffle(data) # in place
             for i in range(0,len(data), batch_size):
-                self.batch_update(data[i:i+batch_size], eta, loss_fn=loss_fn, dloss_fn=dloss_fn)
+                self.batch_update(data[i:i+batch_size], eta, dloss_fn=dloss_fn)
 
             if report:
                 # might be more interesting to calculate loss and accuracy after each batch update, not after each epoch
@@ -64,28 +74,35 @@ class network:
                 print(f"epoch: {epoch} | loss: {loss} | accuracy: {accuracy}")
 
 
-    def batch_update(self, train_data: np.array, eta: float, loss_fn, dloss_fn):
+    def batch_update(self, train_data: np.array, eta: float, dloss_fn):
 
         partial_weights = [np.zeros((self.layers[i+1], self.layers[i])) for i in range(len(self.layers)-1)]
-        partial_biases = [np.zeros((self.layers[i],1)) for i in range(1, len(self.layers))]
+        partial_biases = [np.zeros(self.layers[i]) for i in range(1, len(self.layers))]
 
-        for (X,y) in train_data:
+        for X,y in train_data:
+            assert(isinstance(X, np.ndarray) and isinstance(y, np.ndarray))
             weights_update, biases_update  = self.backpropagation(X, y, dloss_fn)
-
             partial_weights = [np.add(x,y) for (x,y) in zip(partial_weights, weights_update)]
             partial_biases = [np.add(x,y) for (x,y) in zip(partial_biases, biases_update)]
-        
+
         partial_weights = [(-eta*sublist)/len(train_data) for sublist in partial_weights] # normalize and multiply by learning rate
         partial_biases = [(-eta*sublist)/len(train_data) for sublist in partial_biases]
+        
+        # print(f"partial weights: {partial_weights}")
+        # print(f"weights: {self.weights}")
+        # print(f"partial biases: {partial_biases}")
+        # print(f"biases: {self.biases}") 
+        # deb.check_biases(self, partial_weights)
+        # deb.check_weights(self, partial_biases)
 
         self.weights = [np.add(x,y) for (x,y) in zip(self.weights, partial_weights)]
         self.biases  = [np.add(x,y) for (x,y) in zip(self.biases, partial_biases)]
 
 
     def backpropagation(self, X: np.array, y: np.array, dloss_fn):
-        
-        z, a = self.forward(X)
+        assert(isinstance(X, np.ndarray) and isinstance(y, np.ndarray))
 
+        z, a = self.forward(X)
         delta = []
         delta.append(dloss_fn(y_true=y, y_pred=a[-1])*dReLU(z[-1]))
 
@@ -97,17 +114,19 @@ class network:
 
         for ind_delta in range(len(delta)):
             if(isinstance(delta[ind_delta], np.ndarray)): # check if array or scalar
+                temp = []
                 for d in range(len(delta[ind_delta])):
                     # print(f"print a in loop {a[-(ind_delta+2)]}")
-                    partial_weights.append(np.array(delta[ind_delta][d] * a[-(ind_delta+2)]))
+                    temp.append(delta[ind_delta][d] * a[-(ind_delta+2)])
+                partial_weights.append(np.array(temp))
             else:
                 # print(f"print a in loop {a[-(ind_delta+2)]}")
                 partial_weights.append(np.array(delta[ind_delta] * a[-(ind_delta+2)]))
         delta.reverse()
         partial_weights.reverse()
-
-        deb.check_biases(self, delta)
-        deb.check_weights(self, partial_weights)
+    
+        # deb.check_biases(self, delta)
+        # deb.check_weights(self, partial_weights)
         
 
         return partial_weights, delta # since delta = partial_biases
@@ -129,11 +148,7 @@ def mean_square_error(y_true: np.array, y_pred: np.array):
 
 def dmean_square_error(y_true: np.array, y_pred: np.array):
     if not np.issubdtype(y_true.dtype, float):
-        y_true = y_true[:, np.newaxis]
-        # this is risky if y_true and y_pred are not both colum vectors
-        res = 2/len(y_true) * (y_pred-y_true)
-        assert(res.shape[1]==1)
-        return res
+        return 2/len(y_true) * (y_pred-y_true)
     else:
         return 2*(y_pred-y_true)
 

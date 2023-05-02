@@ -1,4 +1,4 @@
-import network0
+
 import numpy as np
 import logging
 
@@ -19,16 +19,16 @@ logger.addHandler(file_handler)
 
 
 # function that checks if weights matrix has right dimensions
-def check_weights(net: network0.network, test: np.array):
+def check_weights(net, test: np.array):
     for i in range(len(net.layers)-1):
-        if not (test[i].shape == (net.layers[i+1], net.layers[i])):
+        if not (test[i].shape is (net.layers[i+1], net.layers[i])):
             logger.debug(f"weights check: test shape at index {i}: {test[i].shape} | weights shape at index {i}: {net.weights[i].shape}")
             logger.warn(f"test: {test} | weights: {net.weights}")
             assert(0)
 
-def check_biases(net: network0.network, test: np.array):
+def check_biases(net, test: np.array):
     for i in range(1, len(net.layers)):
-        if not (test[i-1].shape == (net.layers[i])):
+        if not (test[i-1].shape is (net.layers[i])):
             logger.debug(f"biases check: test shape at index {i-1}: {test[i-1].shape} | biases shape at index {i-1}: {net.biases[i-1].shape}")
             logger.warn(f"test: {test} | biases: {net.biases}")
             assert(0)
