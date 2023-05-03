@@ -3,6 +3,7 @@ import numpy as np
 import debugger as deb
 importlib.reload(deb)
 import json
+import matplotlib.pyplot as plt
 
 seed_value = 42
 
@@ -35,7 +36,7 @@ class network:
         #deb.check_weights(self, self.weights)
         #deb.check_biases(self, self.biases)
     
-    def forward(self, z : np.array, evaluation: bool = False):
+    def forward(self, z : np.array, internal: bool = False):
         z = [z] # need to do this with a list, since not all sublist are of the same size
         a = z[:] # create copy of z
 
@@ -46,13 +47,12 @@ class network:
         for i in range(1,len(self.layers)-1):
             z.append(np.dot(self.weights[i], a[-1]) + self.biases[i])
             a.append(ReLU(z[-1]))
-        if evaluation:
-            return a[-1]
+        if internal:
+            return z, a
         else:
-            return z , a # returns two lists
-    
+            return a[-1]    
     def SGD(self, train_data: np.array, eta: float, epochs: int, batch_size: int, loss_fn, dloss_fn, report: bool = False, validation_data: np.array = None, seed_value: float = None):
-        
+        losses=[]
         '''if report is true, then we need validation data
         input data has the form [np.array(input),np.array(label)], due to initial form of the data'''
         # should shuffle data here
@@ -67,20 +67,19 @@ class network:
                 assert(not (validation_data is None))
                 assert(len(validation_data[0]) == len(validation_data[1]))
                 # might be more interesting to calculate loss and accuracy after each batch update, not after each epoch
-                loss, accuracy = 0, 0
+                loss = 0
 
                 for i in range(len(validation_data)):
-                    y_pred = self.forward(validation_data[0][i], evaluation=True)
+                    y_pred = self.forward(validation_data[0][i])
                     loss += loss_fn(y_pred=y_pred, y_true= validation_data[1][i])
-                    # get y_pred in one-hot format this should be done better
-                    temp = np.zeros_like(y_pred)
-                    temp[np.argmax(y_pred)] = 1
-                    accuracy += np.array_equal(temp, validation_data[1][i])
+                    # get y_pred in one-hot
 
                 loss /= len(validation_data[0])
-                accuracy /= len(validation_data[1])
-                print(f"epoch: {epoch} | loss: {loss} | accuracy: {accuracy}")
-
+                losses.append(loss)
+                print(f"epoch: {epoch} | loss: {loss}")
+        plt.plot(losses, label="loss vs epochs")
+        plt.legend()
+        plt.show()
 
     def batch_update(self, train_data_feature: np.array, train_data_label: np.array, eta: float, dloss_fn):
         assert(len(train_data_feature) == len(train_data_label))
@@ -113,7 +112,7 @@ class network:
     def backpropagation(self, X: np.array, y: np.array, dloss_fn):
         assert(isinstance(X, np.ndarray) and isinstance(y, np.ndarray))
 
-        z, a = self.forward(X)
+        z, a = self.forward(X, internal=True)
         delta = []
         delta.append(dloss_fn(y_true=y, y_pred=a[-1])*dReLU(z[-1]))
 
