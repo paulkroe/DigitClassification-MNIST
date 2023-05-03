@@ -2,6 +2,7 @@ import importlib
 import numpy as np
 import debugger as deb
 importlib.reload(deb)
+import json
 
 seed_value = 42
 
@@ -34,7 +35,7 @@ class network:
         #deb.check_weights(self, self.weights)
         #deb.check_biases(self, self.biases)
     
-    def forward(self, z : np.array):
+    def forward(self, z : np.array, evaluation: bool = False):
         z = [z] # need to do this with a list, since not all sublist are of the same size
         a = z[:] # create copy of z
 
@@ -45,48 +46,58 @@ class network:
         for i in range(1,len(self.layers)-1):
             z.append(np.dot(self.weights[i], a[-1]) + self.biases[i])
             a.append(ReLU(z[-1]))
-
-        return z , a # returns two lists
+        if evaluation:
+            return a[-1]
+        else:
+            return z , a # returns two lists
     
     def SGD(self, train_data: np.array, eta: float, epochs: int, batch_size: int, loss_fn, dloss_fn, report: bool = False, validation_data: np.array = None, seed_value: float = None):
-        '''if report is true, then we need validation data'''
-        data = train_data
-        np.random.seed(seed_value)
+        
+        '''if report is true, then we need validation data
+        input data has the form [np.array(input),np.array(label)], due to initial form of the data'''
+        # should shuffle data here
+        assert(len(train_data[0]) == len(train_data[1]))
+        n = len(train_data[0])
         for epoch in range(epochs):
-            np.random.shuffle(data) # in place
-            for i in range(0,len(data), batch_size):
-                self.batch_update(data[i:i+batch_size], eta, dloss_fn=dloss_fn)
+
+            for i in range(0,n, batch_size):
+                self.batch_update(train_data[0][i:i+batch_size], train_data[1][i:i+batch_size], eta, dloss_fn=dloss_fn)
 
             if report:
+                assert(not (validation_data is None))
+                assert(len(validation_data[0]) == len(validation_data[1]))
                 # might be more interesting to calculate loss and accuracy after each batch update, not after each epoch
                 loss, accuracy = 0, 0
 
-                for (X,y) in validation_data:
-                    y_pred = self.forward(X)[-1]
-                    loss += loss_fn(y_pred=y_pred, y_true= y)
+                for i in range(len(validation_data)):
+                    y_pred = self.forward(validation_data[0][i], evaluation=True)
+                    loss += loss_fn(y_pred=y_pred, y_true= validation_data[1][i])
                     # get y_pred in one-hot format this should be done better
                     temp = np.zeros_like(y_pred)
                     temp[np.argmax(y_pred)] = 1
-                    accuracy += np.array_equal(temp, y)
+                    accuracy += np.array_equal(temp, validation_data[1][i])
 
-                loss /= len(validation_data)
-                accuracy /= len(validation_data)
+                loss /= len(validation_data[0])
+                accuracy /= len(validation_data[1])
                 print(f"epoch: {epoch} | loss: {loss} | accuracy: {accuracy}")
 
 
-    def batch_update(self, train_data: np.array, eta: float, dloss_fn):
+    def batch_update(self, train_data_feature: np.array, train_data_label: np.array, eta: float, dloss_fn):
+        assert(len(train_data_feature) == len(train_data_label))
+        n = len(train_data_feature)
 
         partial_weights = [np.zeros((self.layers[i+1], self.layers[i])) for i in range(len(self.layers)-1)]
         partial_biases = [np.zeros(self.layers[i]) for i in range(1, len(self.layers))]
 
-        for X,y in train_data:
-            assert(isinstance(X, np.ndarray) and isinstance(y, np.ndarray))
-            weights_update, biases_update  = self.backpropagation(X, y, dloss_fn)
+
+        for i in range(n):
+            assert(isinstance(train_data_feature[i], np.ndarray) and isinstance(train_data_label[i], np.ndarray))
+            weights_update, biases_update  = self.backpropagation(train_data_feature[i], train_data_label[i], dloss_fn)
             partial_weights = [np.add(x,y) for (x,y) in zip(partial_weights, weights_update)]
             partial_biases = [np.add(x,y) for (x,y) in zip(partial_biases, biases_update)]
 
-        partial_weights = [(-eta*sublist)/len(train_data) for sublist in partial_weights] # normalize and multiply by learning rate
-        partial_biases = [(-eta*sublist)/len(train_data) for sublist in partial_biases]
+        partial_weights = [(-eta*sublist)/n for sublist in partial_weights] # normalize and multiply by learning rate
+        partial_biases = [(-eta*sublist)/n for sublist in partial_biases]
         
         # print(f"partial weights: {partial_weights}")
         # print(f"weights: {self.weights}")
@@ -131,7 +142,19 @@ class network:
 
         return partial_weights, delta # since delta = partial_biases
 
-        
+    def safe_model(self, file_name: str):
+        w = self.weights[:]
+        b = self.biases[:]
+
+        w = w.tolist()
+        b.tolist()
+
+        data = {"weights": w, 
+                "biases": b
+                }
+        with open(file_name, "w") as f:
+            json.dump(data, f)
+
 
 def ReLU(input: np.array):
         return np.maximum(0,input)
