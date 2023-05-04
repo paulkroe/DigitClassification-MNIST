@@ -14,6 +14,9 @@ This project aims at summarizing the book chapter by chapter. After craftig this
 $\sigma(z) = \frac{1}{1+e^{-z}}$
 More explicitly, the output of a sigmoid neuron with inputs $x_1,...,x_n$ and weights $w_1,...,w_n$ and a bias b is given as:
 $$\frac{1}{1+e^{-\sum_{i = 1}^{n}w_ix_i-b}}$$
+Derivative of the sigmoid function>
+$$\sigma '(z) = \sigma(z) * (1-\sigma(z))
+
 
 2) Square mean error: $a$ activation in the output layer, $y(x)$ desired output, $x$ input:
 $$C(w,b) = \frac{1}{2n}\sum_{x}||y(x) -a||^2$$

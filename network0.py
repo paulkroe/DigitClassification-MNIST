@@ -4,13 +4,13 @@ import debugger as deb
 importlib.reload(deb)
 import json
 import matplotlib.pyplot as plt
-
+import random
 seed_value = 42
 
 # TODO: assert input right shape for nn
 
 class network:
-    def __init__(self, layers: np.array, weights=None, biases=None, seed_value: float = None):
+    def __init__(self, layers: np.array, activation_function, dactivation_function, weights=None, biases=None, seed_value: float = None):
         
         '''
         Implementing a fully connected neural network.
@@ -18,6 +18,8 @@ class network:
         weights[l] = weights matrix of the l+1-th layer. --> weights[l][j][i] = w_{ji}_{l+1}
         biases[l] = biases of the l+1-th layer. --> biases[l][i] = b^{l+1}_{i}
         '''
+        self.activation_function = activation_function
+        self.dactivation_function = dactivation_function
         assert(isinstance(layers, np.ndarray))
 
         self.layers = layers
@@ -30,8 +32,8 @@ class network:
 
         else:
             np.random.seed(seed_value)
-            self.weights = [np.random.rand(layers[i+1], layers[i]) for i in range(len(layers)-1)]
-            self.biases = [np.random.rand(layers[i]) for i in range(1, len(layers))]
+            self.weights = [np.random.randn(layers[i+1], layers[i]) for i in range(len(layers)-1)]
+            self.biases = [np.random.randn(layers[i]) for i in range(1, len(layers))]
 
         #deb.check_weights(self, self.weights)
         #deb.check_biases(self, self.biases)
@@ -40,46 +42,34 @@ class network:
         z = [z] # need to do this with a list, since not all sublist are of the same size
         a = z[:] # create copy of z
 
-        z.append(np.dot(self.weights[0], a[0]) + self.biases[0])        
-        a.append(ReLU(z[-1]))
-
-
-        for i in range(1,len(self.layers)-1):
+        for i in range(0,len(self.layers)-1):
             z.append(np.dot(self.weights[i], a[-1]) + self.biases[i])
-            a.append(ReLU(z[-1]))
+            a.append(self.activation_function(z[-1]))
         if internal:
             return z, a
         else:
             return a[-1]    
-    def SGD(self, train_data: np.array, eta: float, epochs: int, batch_size: int, loss_fn, dloss_fn, report: bool = False, validation_data: np.array = None, seed_value: float = None):
-        losses=[]
+        
+    def SGD(self, train_data: np.array, eta: float, epochs: int, batch_size: int, loss_fn, dloss_fn, validation_data: np.array = None, seed_value: float = None):
         '''if report is true, then we need validation data
         input data has the form [np.array(input),np.array(label)], due to initial form of the data'''
-        # should shuffle data here
         assert(len(train_data[0]) == len(train_data[1]))
         n = len(train_data[0])
+        permutation = [i for i in range(n)]
         for epoch in range(epochs):
-
+            # shuffle data here
+            random.shuffle(permutation)
+            for i in range(n):
+                train_data[0][i], train_data[0][permutation[i]] = train_data[0][permutation[i]], train_data[0][i]
+                train_data[1][i], train_data[1][permutation[i]] = train_data[1][permutation[i]], train_data[1][i]
             for i in range(0,n, batch_size):
                 self.batch_update(train_data[0][i:i+batch_size], train_data[1][i:i+batch_size], eta, dloss_fn=dloss_fn)
-
-            if report:
+            if not validation_data is None:
                 assert(not (validation_data is None))
                 assert(len(validation_data[0]) == len(validation_data[1]))
-                # might be more interesting to calculate loss and accuracy after each batch update, not after each epoch
-                loss = 0
-
-                for i in range(len(validation_data)):
-                    y_pred = self.forward(validation_data[0][i])
-                    loss += loss_fn(y_pred=y_pred, y_true= validation_data[1][i])
-                    # get y_pred in one-hot
-
-                loss /= len(validation_data[0])
-                losses.append(loss)
-                print(f"epoch: {epoch} | loss: {loss}")
-        plt.plot(losses, label="loss vs epochs")
-        plt.legend()
-        plt.show()
+                test_results = [(np.argmax(self.forward(validation_data[0][i])), np.argmax(validation_data[1][i])) for i in range(len(validation_data[0]))]
+                acc = sum(x==y for (x, y) in test_results)
+                print(f"Epoch: {epoch} | absolute accuracy on validation data: {acc}/{len(validation_data[0])} | accuracy on validation data in percent: {100*acc/len(validation_data[0])}")
 
     def batch_update(self, train_data_feature: np.array, train_data_label: np.array, eta: float, dloss_fn):
         assert(len(train_data_feature) == len(train_data_label))
@@ -114,10 +104,10 @@ class network:
 
         z, a = self.forward(X, internal=True)
         delta = []
-        delta.append(dloss_fn(y_true=y, y_pred=a[-1])*dReLU(z[-1]))
+        delta.append(dloss_fn(y_true=y, y_pred=a[-1])*self.dactivation_function(z[-1]))
 
         for i in range(1, len(self.layers)-1):
-            delta.append(np.dot(np.transpose(self.weights[-i]), delta[-1])*z[-(i+1)])
+            delta.append(np.dot(np.transpose(self.weights[-i]), delta[-1])*self.dactivation_function(z[-(i+1)]))
 
         # calculate partial weights
         partial_weights = []
@@ -145,11 +135,11 @@ class network:
         w = self.weights[:]
         b = self.biases[:]
 
-        w = w.tolist()
-        b.tolist()
+        save_weights = [sub.tolist() for sub in w]
+        save_biases = [sub.tolist() for sub in b]
 
-        data = {"weights": w, 
-                "biases": b
+        data = {"weights": save_weights, 
+                "biases": save_biases
                 }
         with open(file_name, "w") as f:
             json.dump(data, f)
@@ -161,6 +151,12 @@ def ReLU(input: np.array):
 def dReLU(input: np.array):
         return np.where(input>0, 1, 0)
 
+def sigmoid(z: np.array)->np.array:
+    return 1.0/(1.0+np.exp(-z))
+
+def dsigmoid(z:np.array)->np.array:
+    return sigmoid(z)*(1.0-sigmoid(z))
+
 # when using the network with ReLU one can't easily use cross entropy loss
 def mean_square_error(y_true: np.array, y_pred: np.array):
     '''square mean error for one training input'''
@@ -170,7 +166,8 @@ def mean_square_error(y_true: np.array, y_pred: np.array):
 
 def dmean_square_error(y_true: np.array, y_pred: np.array):
     if not np.issubdtype(y_true.dtype, float):
-        return 2/len(y_true) * (y_pred-y_true)
+        return 1/len(y_true) * (y_pred-y_true)
     else:
-        return 2*(y_pred-y_true)
+        return 1*(y_pred-y_true)
+    
 
